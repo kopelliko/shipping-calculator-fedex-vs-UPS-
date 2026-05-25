@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>輸入送料チェッカー — FedEx vs UPS</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230F1117'/%3E%3C!-- 箱シルエット --%3E%3Crect x='10' y='28' width='44' height='26' rx='3' fill='%23E8ECF4'/%3E%3Cpolygon points='8,28 32,14 56,28' fill='%23B0B8D0'/%3E%3Cline x1='32' y1='14' x2='32' y2='54' stroke='%230F1117' stroke-width='2.5'/%3E%3Cline x1='10' y1='28' x2='56' y2='28' stroke='%230F1117' stroke-width='2'/%3E%3C!-- 左: FedEx紫ドット / 右: UPSオレンジドット --%3E%3Ccircle cx='21' cy='41' r='5' fill='%239B59F5'/%3E%3Ccircle cx='43' cy='41' r='5' fill='%23F5A623'/%3E%3C/svg%3E">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0F1117;
+  --surface:#181B24;
+  --surface2:#1E2232;
+  --border:#2A2F42;
+  --text:#E8ECF4;
+  --muted:#6B7491;
+  --fedex:#9B59F5;
+  --fedex-dim:#3D2580;
+  --fedex-bg:#1A1230;
+  --ups:#F5A623;
+  --ups-dim:#7A5211;
+  --ups-bg:#231A0D;
+  --green:#34D399;
+  --green-bg:#0D2620;
+  --red:#F87171;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'Noto Sans JP',sans-serif;
+  --r:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;padding:24px 16px 80px;}
+.wrap{max-width:820px;margin:0 auto;}
+
+/* Header */
+.hdr{margin-bottom:32px;padding-top:8px;}
+.hdr-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.hdr h1{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.2;}
+.hdr h1 em{color:var(--fedex);font-style:normal;}
+.hdr p{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.7;}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;font-family:var(--mono);}
+.pill-f{background:var(--fedex-bg);color:var(--fedex);border:1px solid var(--fedex-dim);}
+.pill-u{background:var(--ups-bg);color:var(--ups);border:1px solid var(--ups-dim);}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+/* Panel */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:14px;}
+.panel-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:14px;}
+
+/* Region buttons */
+.region-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0;}
+.rbtn{height:34px;padding:0 13px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px;font-family:var(--sans);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.rbtn:hover{border-color:var(--fedex);color:var(--text);}
+.rbtn.active{background:var(--fedex-bg);border-color:var(--fedex);color:var(--fedex);font-weight:600;}
+
+/* Country select */
+.csel{width:100%;height:50px;padding:0 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;font-family:var(--sans);outline:none;-webkit-appearance:none;appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B7491' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;}
+.csel:focus{border-color:var(--fedex);}
+.ctry-wrap{margin-top:12px;animation:fadeIn .15s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
+.zone-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.zbadge{font-family:var(--mono);font-size:10px;font-weight:600;padding:3px 10px;border-radius:5px;}
+.zbf{background:var(--fedex-bg);color:var(--fedex);border:1px solid var(--fedex-dim);}
+.zbu{background:var(--ups-bg);color:var(--ups);border:1px solid var(--ups-dim);}
+.zbu-na{background:#1a1a2a;color:var(--muted);border:1px solid var(--border);}
+
+/* Paste area */
+.paste-toggle{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px;font-family:var(--sans);cursor:pointer;padding:6px 12px;transition:all .15s;white-space:nowrap;}
+.paste-toggle:hover,.paste-toggle.open{border-color:var(--fedex);color:var(--fedex);}
+.paste-area{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;animation:fadeIn .15s ease;}
+.paste-area textarea{width:100%;min-height:130px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:var(--mono);padding:10px 12px;outline:none;resize:vertical;line-height:1.7;}
+.paste-area textarea:focus{border-color:var(--fedex);}
+.paste-area textarea::placeholder{color:var(--muted);}
+.paste-actions{display:flex;gap:8px;margin-top:10px;align-items:center;}
+.btn-parse{height:36px;padding:0 18px;background:var(--fedex-bg);border:1px solid var(--fedex-dim);border-radius:6px;color:var(--fedex);font-size:13px;font-weight:600;font-family:var(--sans);cursor:pointer;transition:all .15s;}
+.btn-parse:hover{background:var(--fedex);color:white;}
+.parse-hint{font-size:11px;color:var(--muted);flex:1;}
+.parse-result{font-size:11px;margin-top:6px;padding:6px 10px;border-radius:5px;}
+.parse-ok{background:rgba(52,211,153,.1);color:var(--green);}
+.parse-err{background:rgba(248,113,113,.1);color:var(--red);}
+
+/* Box entry */
+.box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;transition:border-color .2s;}
+.box:has(input:focus){border-color:#3A4060;}
+.box-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.box-num{font-family:var(--mono);font-size:11px;color:var(--fedex);font-weight:600;}
+.btn-rm{background:none;border:1px solid var(--border);color:var(--muted);width:26px;height:26px;border-radius:5px;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;display:flex;align-items:center;justify-content:center;}
+.btn-rm:hover{border-color:var(--red);color:var(--red);}
+.grid5{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;}
+@media(max-width:560px){.grid5{grid-template-columns:1fr 1fr;}}
+.field label{font-size:10px;color:var(--muted);display:block;margin-bottom:5px;letter-spacing:.3px;}
+.field input{width:100%;height:40px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;font-family:var(--sans);padding:0 10px;outline:none;transition:border-color .15s;}
+.field input:focus{border-color:var(--fedex);}
+.field input::placeholder{color:var(--muted);}
+.vol-bar{margin-top:10px;padding:9px 12px;background:var(--bg);border-radius:6px;font-size:11px;font-family:var(--mono);color:var(--muted);display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+.vol-bar .vb{color:var(--text);}
+.vol-bar .vw{color:var(--green);font-weight:600;}
+.vol-bar .vr{color:var(--ups);font-weight:600;}
+
+/* Add box */
+.btn-add{width:100%;height:44px;background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;font-family:var(--sans);cursor:pointer;transition:all .15s;}
+.btn-add:hover{border-color:var(--fedex);color:var(--fedex);}
+
+/* Summary strip */
+.sum{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.sum-chip{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--muted);}
+.sum-chip b{color:var(--text);font-weight:600;}
+
+/* Results */
+.empty{text-align:center;padding:40px 20px;color:var(--muted);}
+.empty .icon{font-size:42px;margin-bottom:12px;opacity:.5;}
+.rcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+@media(max-width:460px){.rcards{grid-template-columns:1fr;}}
+.rcard{border-radius:var(--r);padding:18px;border:1px solid var(--border);position:relative;transition:all .2s;}
+.rcard.rf{background:var(--fedex-bg);border-color:var(--fedex-dim);}
+.rcard.ru{background:var(--ups-bg);border-color:var(--ups-dim);}
+.rcard.win{border-width:2px;box-shadow:0 0 24px rgba(52,211,153,.12);}
+.rcard.win.rf{border-color:var(--green);}
+.rcard.win.ru{border-color:var(--green);}
+.win-tag{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--green);color:#0a1a14;font-size:10px;font-weight:800;padding:2px 12px;border-radius:20px;white-space:nowrap;letter-spacing:.3px;font-family:var(--mono);}
+.rcard-name{font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;}
+.rn-f{color:var(--fedex);}
+.rn-u{color:var(--ups);}
+.rcard-svc{font-size:10px;color:var(--muted);margin-bottom:14px;}
+.rcard-price{font-family:var(--mono);font-size:32px;font-weight:600;line-height:1;color:var(--text);}
+.rcard-meta{font-size:10px;color:var(--muted);margin-top:6px;font-family:var(--mono);}
+
+/* Savings */
+.save-bar{background:var(--green-bg);border:1px solid rgba(52,211,153,.25);border-radius:var(--r);padding:14px 18px;text-align:center;margin-bottom:12px;}
+.save-main{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--green);}
+.save-sub{font-size:11px;color:#6EC9A1;margin-top:4px;}
+
+/* Breakdown */
+.breakdown{margin-bottom:12px;}
+.breakdown-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;font-weight:700;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead tr{border-bottom:1px solid var(--border);}
+thead th{padding:7px 6px;text-align:right;color:var(--muted);font-weight:500;font-size:11px;}
+thead th:first-child{text-align:left;}
+tbody tr{border-bottom:1px solid rgba(255,255,255,.03);}
+tbody tr:hover{background:rgba(255,255,255,.02);}
+td{padding:8px 6px;vertical-align:middle;}
+td:first-child{text-align:left;}
+td:not(:first-child){text-align:right;}
+.td-win{font-weight:700;}
+.td-f-win{color:var(--fedex);}
+.td-u-win{color:var(--ups);}
+.mini-badge{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;}
+.mb-f{background:var(--fedex-bg);color:var(--fedex);border:1px solid var(--fedex-dim);}
+.mb-u{background:var(--ups-bg);color:var(--ups);border:1px solid var(--ups-dim);}
+.mb-tie{background:rgba(255,255,255,.05);color:var(--muted);}
+
+/* Warning */
+/* FSC Panel */
+.fsc-rows{display:flex;flex-direction:column;gap:10px;}
+.fsc-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.fsc-label{font-size:12px;font-weight:700;width:90px;flex-shrink:0;}
+.fsc-label.lf{color:var(--fedex);}
+.fsc-label.lu{color:var(--ups);}
+.fsc-input{width:72px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:14px;font-family:var(--mono);font-weight:600;text-align:right;}
+.fsc-input:focus{outline:none;border-color:var(--fedex);}
+.fsc-pct{color:var(--muted);font-size:13px;font-family:var(--mono);}
+.fsc-link{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;letter-spacing:.3px;border:1px solid;transition:opacity .15s;}
+.fsc-link:hover{opacity:.7;}
+.fsc-link.lk-f{color:var(--fedex);border-color:var(--fedex-dim);background:var(--fedex-bg);}
+.fsc-link.lk-u{color:var(--ups);border-color:var(--ups-dim);background:var(--ups-bg);}
+.fsc-note{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;}
+/* Result breakdown */
+.rcard-breakdown{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07);font-size:11px;font-family:var(--mono);}
+.rbd-row{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:3px;}
+.rbd-row.total{color:var(--text);font-weight:700;font-size:13px;padding-top:5px;border-top:1px solid rgba(255,255,255,.1);margin-top:4px;}
+.warn{border-left:3px solid rgba(251,191,36,.5);padding:10px 14px;font-size:11px;color:#9C8040;line-height:1.7;border-radius:0 6px 6px 0;background:rgba(251,191,36,.04);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hdr">
+  <div class="hdr-top">
+    <div>
+      <h1>輸入送料チェッカー<br><em>FedEx</em> vs UPS</h1>
+      <p>箱のサイズ・重量を入力するだけ。どちらの配送会社がお得か瞬時に比較。</p>
+    </div>
+  </div>
+  <div class="pills">
+    <span class="pill pill-f"><span class="dot"></span>FedEx インターナショナル・エコノミー</span>
+    <span class="pill pill-u"><span class="dot"></span>UPS ワールドワイド・エクスペダイテッド</span>
+  </div>
+</header>
+
+<!-- Country -->
+<div class="panel">
+  <div class="panel-label">1. 仕入れ先の国・地域</div>
+  <div class="region-row" id="region-row"></div>
+  <div class="ctry-wrap" id="ctry-wrap" style="display:none;">
+    <select class="csel" id="country" onchange="recalc()">
+      <option value="">— 国を選択してください —</option>
+    </select>
+  </div>
+  <div class="zone-row" id="zone-info"></div>
+</div>
+
+<!-- Boxes -->
+<div class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);">2. 梱包情報</div>
+    <button class="paste-toggle" id="paste-btn" onclick="togglePaste()">📋 テキストで一括入力</button>
+  </div>
+  <div class="paste-area" id="paste-area" style="display:none;">
+    <textarea id="paste-input" placeholder="仕入れ先からのテキストをそのまま貼り付け&#10;例:&#10;Box 1: 7.0kg (43 × 41 × 31)&#10;Box 2: 7.4kg (43 × 41 × 31)&#10;2 Boxes: 3.2kg (15 × 39 × 23)&#10;41 Boxes: 4.2kg (47 × 41 × 31)"></textarea>
+    <div class="paste-actions">
+      <button class="btn-parse" onclick="doParse()">解析して入力</button>
+      <span class="parse-hint">重量（kg）と寸法（L×W×H）を自動認識します</span>
+    </div>
+    <div id="parse-result" style="display:none;"></div>
+  </div>
+  <div id="boxes"></div>
+  <button class="btn-add" onclick="addBox()">＋ 箱の種類を追加</button>
+  <div class="sum" id="summary" style="display:none;"></div>
+</div>
+
+<!-- FSC Settings -->
+<div class="panel">
+  <div class="panel-label">3. 燃油サーチャージ（FSC）</div>
+  <div class="fsc-rows">
+    <div class="fsc-row">
+      <span class="fsc-label lf">FedEx IE</span>
+      <input class="fsc-input" type="number" id="fsc-fx" placeholder="例: 30.0" min="0" max="99" step="0.25" oninput="recalc()">
+      <span class="fsc-pct">%</span>
+      <a class="fsc-link lk-f" href="https://www.fedex.com/ja-jp/shipping/surcharges.html" target="_blank" rel="noopener">🔗 FedEx 確認</a>
+    </div>
+    <div class="fsc-row">
+      <span class="fsc-label lu">UPS Exp.</span>
+      <input class="fsc-input" type="number" id="fsc-up" placeholder="例: 26.0" min="0" max="99" step="0.25" oninput="recalc()">
+      <span class="fsc-pct">%</span>
+      <a class="fsc-link lk-u" href="https://www.ups.com/jp/ja/support/shipping-support/shipping-costs-rates/fuel-surcharges" target="_blank" rel="noopener">🔗 UPS 確認</a>
+    </div>
+  </div>
+  <div class="fsc-note">正味運賃に対して乗算されます。両社とも週次〜月次で更新 — 出荷前に各社サイトでご確認ください。</div>
+</div>
+
+<!-- Results -->
+<div class="panel" id="result-panel">
+  <div class="panel-label">4. 送料比較結果</div>
+  <div class="empty" id="empty-msg">
+    <div class="icon">📦</div>
+    国と箱情報を入力すると<br>結果がリアルタイムで表示されます
+  </div>
+  <div id="result-content" style="display:none;"></div>
+</div>
+
+</div>
+<script>
+// ============================================================
+// FEDEX IE IMPORT — fixed rates per package (JPY)
+// Array index i → weight (i+1)*0.5 kg
+// i=0→0.5kg, i=1→1.0kg, … i=40→20.5kg
+// Zones A,D,E,F,G,H,I,J,K,M,N: first 20 entries null (data starts at 10.5kg)
+// ============================================================
+const FX={
+O:[3352,4302,4837,5372,5907,5908,6317,6726,7134,7543,12546,13117,13687,14257,14827,15397,15967,16537,17108,17678,17592,17815,18038,18260,18483,18706,18929,19152,19375,19598,19820,20043,20266,20489,20712,20935,21157,21380,21603,21826,22049],
+Q:[1447,2435,2600,2765,2929,3439,3624,3808,3993,4177,4179,4336,4494,4651,4809,4966,5123,5281,5438,5595,5590,5643,5696,5749,5802,5855,5907,5960,6013,6066,6119,6172,6225,6278,6330,6383,6436,6489,6542,6595,6648],
+R:[1867,3076,3284,3492,3700,4036,4252,4469,4685,4902,5195,5390,5586,5782,5977,6173,6369,6564,6760,6956,8571,8652,8733,8814,8895,8977,9058,9139,9220,9301,9382,9463,9544,9625,9706,9787,9868,9949,10030,10111,10193],
+S:[1766,2480,2648,2816,2984,3247,3421,3595,3769,3944,4775,4955,5135,5315,5494,5674,5854,6034,6214,6394,7237,7306,7374,7443,7511,7579,7648,7716,7785,7853,7922,7990,8059,8127,8195,8264,8332,8401,8469,8538,8606],
+T:[2610,3395,3625,3854,4083,4697,4940,5184,5428,5672,6768,7034,7299,7565,7830,8096,8361,8627,8892,9158,11574,11683,11792,11900,12009,12118,12227,12336,12445,12554,12662,12771,12880,12989,13098,13207,13315,13424,13533,13642,13751],
+U:[2435,3160,3553,3945,4338,4473,4782,5092,5401,5711,5712,5971,6231,6490,6750,7009,7269,7528,7788,8048,10146,10274,10403,10531,10660,10789,10917,11046,11174,11303,11431,11560,11688,11817,11945,12074,12202,12331,12459,12588,12716],
+V:[1643,2086,2238,2389,2541,2701,2852,3003,3154,3305,3827,3967,4108,4248,4389,4530,4670,4811,4952,5092,7264,7331,7399,7467,7534,7602,7669,7737,7805,7872,7940,8007,8075,8143,8210,8278,8346,8413,8481,8548,8616],
+W:[1392,2255,2419,2583,2747,3325,3510,3696,3882,4067,4877,5056,5235,5415,5594,5773,5952,6132,6311,6490,9571,9661,9750,9839,9928,10017,10106,10195,10284,10373,10462,10552,10641,10730,10819,10908,10997,11086,11175,11264,11353],
+X:[1642,3296,3535,3775,4014,4590,4847,5103,5359,5615,5684,5893,6102,6311,6520,6729,6938,7147,7356,7565,7799,7872,7944,8017,8089,8162,8235,8307,8380,8452,8525,8598,8670,8743,8815,8888,8961,9033,9106,9178,9251],
+Y:[1674,2760,2947,3133,3320,4137,4358,4580,4802,5024,5988,6213,6439,6664,6890,7115,7341,7566,7792,8017,9095,9181,9267,9353,9439,9526,9612,9698,9784,9870,9956,10042,10128,10214,10300,10386,10472,10558,10644,10730,10816],
+Z:[2129,3061,3283,3505,3728,3740,3949,4158,4367,4576,4579,4747,4915,5084,5252,5420,5588,5757,5925,6093,7976,8050,8125,8199,8273,8347,8422,8496,8570,8644,8719,8793,8867,8941,9016,9090,9164,9238,9313,9387,9461],
+A:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,13506,13632,13758,13884,14009,14135,14261,14387,14512,14638,14764,14889,15015,15141,15267,15392,15518,15644,15770,15895,16021],
+D:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,17211,17429,17647,17865,18083,18301,18519,18737,18955,19173,19391,19609,19827,20045,20263,20481,20699,20917,21135,21353,21571],
+E:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8310,8486,8661,8837,9013,9189,9365,9541,9717,9893,10069,10244,10420,10596,10772,10948,11124,11300,11476,11652,11827],
+F:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8359,8537,8716,8894,9072,9250,9428,9606,9784,9963,10141,10319,10497,10675,10853,11031,11210,11388,11566,11744,11922],
+G:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,28174,28746,29317,29889,30460,31032,31603,32175,32746,33318,33889,34461,35032,35604,36175,36747,37318,37890,38461,39033,39604],
+H:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,7879,8079,8279,8480,8680,8881,9081,9281,9482,9682,9882,10083,10283,10484,10684,10884,11085,11285,11485,11686,11886],
+I:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,30672,31196,31721,32246,32770,33295,33819,34344,34869,35393,35918,36442,36967,37492,38016,38541,39065,39590,40115,40639,41164],
+J:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,39981,40687,41392,42097,42802,43507,44213,44918,45623,46328,47033,47739,48444,49149,49854,50559,51265,51970,52675,53380,54085],
+K:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8153,8229,8305,8381,8457,8533,8609,8685,8761,8837,8912,8988,9064,9140,9216,9292,9368,9444,9520,9596,9671],
+M:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,7422,7610,7799,7988,8177,8365,8554,8743,8932,9120,9309,9498,9687,9875,10064,10253,10442,10630,10819,11008,11197],
+N:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8176,8253,8331,8408,8485,8563,8640,8717,8795,8872,8949,9027,9104,9181,9259,9336,9413,9491,9568,9645,9723],
+};
+
+// FedEx per-kg rates for > 20.5 kg: [[maxKg, rate], ...]
+const FXK={
+A:[[44,621],[70,568],[99,537],[299,476],[499,428],[999,413],[1e9,413]],
+D:[[44,1475],[70,1299],[99,1242],[299,1179],[499,1121],[999,1062],[1e9,1038]],
+E:[[44,273],[70,256],[99,242],[299,244],[499,243],[999,243],[1e9,243]],
+F:[[44,314],[70,285],[99,281],[299,281],[499,280],[999,281],[1e9,281]],
+G:[[44,1989],[70,1823],[99,1634],[299,1634],[499,1503],[999,1494],[1e9,1481]],
+H:[[44,466],[70,401],[99,402],[299,402],[499,396],[999,397],[1e9,400]],
+I:[[44,2025],[70,1754],[99,1406],[299,1395],[499,1258],[999,1243],[1e9,1243]],
+J:[[44,2645],[70,2253],[99,2077],[299,2064],[499,1875],[999,1815],[1e9,1810]],
+K:[[44,412],[70,411],[99,366],[299,366],[499,362],[999,362],[1e9,362]],
+M:[[44,392],[70,383],[99,384],[299,384],[499,379],[999,380],[1e9,383]],
+N:[[44,540],[70,521],[99,458],[299,432],[499,408],[999,380],[1e9,331]],
+O:[[44,1029],[70,906],[99,248],[299,241],[499,237],[999,224],[1e9,224]],
+Q:[[44,463],[70,429],[99,379],[299,371],[499,354],[999,361],[1e9,348]],
+R:[[44,488],[70,456],[99,415],[299,405],[499,395],[999,403],[1e9,403]],
+S:[[44,473],[70,453],[99,449],[299,426],[499,425],[999,402],[1e9,390]],
+T:[[44,667],[70,628],[99,597],[299,560],[499,556],[999,557],[1e9,559]],
+U:[[44,731],[70,707],[99,673],[299,572],[499,531],[999,479],[1e9,480]],
+V:[[44,460],[70,428],[99,383],[299,383],[499,373],[999,256],[1e9,256]],
+W:[[44,458],[70,457],[99,457],[299,457],[499,453],[999,453],[1e9,435]],
+X:[[44,458],[70,431],[99,409],[299,361],[499,352],[999,339],[1e9,339]],
+Y:[[44,495],[70,453],[99,451],[299,409],[499,400],[999,359],[1e9,342]],
+Z:[[44,508],[70,481],[99,436],[299,417],[499,399],[999,399],[1e9,399]],
+};
+
+// ============================================================
+// UPS Worldwide Expedited IMPORT — per package (JPY)
+// UP[kg-1][col] where col: 0=Z1,1=Z2,2=Z3,3=Z4,4=Z5,5=Z6,
+//   6=Z7,7=Z8,8=Z9,9=Z10,10=Korea★,11=HK★,12=Phil★
+// Source: S料金表_IMPORT_EXPEDITED (contracted net rates)
+// ============================================================
+const UP=[
+[2258,5735,1407,2781,2502,2623,2808,3347,3954,1202,1693,1285,1440],
+[2905,7119,1886,3226,3441,3482,3725,4454,5826,1508,2179,1547,1787],
+[3340,8494,2311,4122,4359,4213,4826,5621,7592,1779,2505,1846,2132],
+[3860,10158,2722,5034,5161,5031,5717,6759,9283,2097,2895,2207,2550],
+[4425,11542,3054,5949,6021,5962,6690,7927,11010,2404,3319,2508,2898],
+[4729,12144,3308,6322,6424,6692,7307,9003,12401,2569,3547,2639,3049],
+[5119,13078,3599,6731,6862,7381,7965,10091,13791,2780,3839,2842,3283],
+[5487,14130,3878,7198,7264,7909,8597,11120,15145,2981,4115,3070,3547],
+[5790,14841,4037,7515,7645,8169,9198,12195,16374,3145,4343,3225,3726],
+[6050,15514,4343,7869,8028,8527,9814,13207,17676,3263,4537,3371,3895],
+[6486,16780,4650,8280,8393,8841,10399,14000,18975,3417,4865,3646,4213],
+[6657,18154,4860,8707,8699,9185,11043,14811,20297,3615,4993,3945,4558],
+[6940,19259,5139,9026,9022,9544,11646,15557,21454,3888,5205,4185,4835],
+[7202,20306,5297,9288,9367,9859,12249,16227,22433,4160,5401,4413,5098],
+[7417,21188,5552,9605,9730,10203,12544,16880,23112,4406,5563,4604,5319],
+[7656,21856,5685,9922,10053,10318,12703,17600,24134,4535,5742,4749,5487],
+[7849,22463,5882,10238,10239,10360,12867,18268,24864,4630,5887,4881,5639],
+[8004,23235,6135,10424,10463,10403,13011,18423,25257,4724,6003,5049,5833],
+[8090,23672,6361,10462,10711,10504,13322,18502,25932,4784,6068,5144,5943],
+[8197,23790,6681,10611,11146,10590,13429,18595,26034,4854,6148,5170,5973],
+[7458,22297,6360,10181,11393,11273,15190,20924,26106,4683,5593,4845,5598],
+[7813,23359,6662,10666,11935,11810,15913,21920,27349,4906,5859,5076,5864],
+[8168,24420,6965,11150,12478,12347,16637,22917,28592,5129,6126,5307,6131],
+[8523,25482,7268,11635,13020,12884,17360,23913,29835,5352,6392,5537,6397],
+[8878,26544,7571,12120,13563,13421,18083,24910,31078,5575,6659,5768,6664],
+[9233,27606,7874,12605,14105,13957,18807,25906,32321,5798,6925,5999,6931],
+[9588,28668,8177,13090,14648,14494,19530,26902,33564,6021,7191,6229,7197],
+[9943,29729,8480,13574,15190,15031,20253,27899,34807,6244,7458,6460,7464],
+[10298,30791,8782,14059,15733,15568,20977,28895,36050,6467,7724,6691,7730],
+[10654,31853,9085,14544,16275,16105,21700,29891,37294,6690,7990,6922,7997],
+[11009,32915,9388,15029,16818,16641,22423,30888,38537,6913,8257,7152,8263],
+[11364,33976,9691,15514,17360,17178,23147,31884,39780,7136,8523,7383,8530],
+[11719,35038,9994,15998,17903,17715,23870,32881,41023,7359,8789,7614,8796],
+[12074,36100,10297,16483,18445,18252,24593,33877,42266,7582,9056,7844,9063],
+[12429,37162,10599,16968,18988,18789,25317,34873,43509,7805,9322,8075,9330],
+[12784,38223,10902,17453,19530,19326,26040,35870,44752,8028,9588,8306,9596],
+[13139,39285,11205,17938,20073,19862,26763,36866,45995,8251,9855,8537,9863],
+[13495,40347,11508,18422,20615,20399,27487,37862,47239,8474,10121,8767,10129],
+[13850,41409,11811,18907,21158,20936,28210,38859,48482,8697,10387,8998,10396],
+[14205,42470,12114,19392,21700,21473,28933,39855,49725,8920,10654,9229,10662],
+[14560,43532,12416,19877,22243,22010,29657,40852,50968,9143,10920,9460,10929],
+[14915,44594,12719,20362,22785,22546,30380,41848,52211,9366,11186,9690,11196],
+[15270,45656,13022,20846,23074,23083,31103,42844,53454,9495,11453,9921,11462],
+[15625,46717,13325,21331,23074,23620,31788,43841,54697,9495,11719,10152,11729],
+[15980,46926,13628,21600,23074,23846,31788,44837,55276,9495,11985,10197,11781],
+[16336,47969,13931,22080,23587,24376,32495,45833,56505,9706,12252,10424,12043],
+[16691,49012,14233,22560,24099,24906,33201,46830,57733,9917,12518,10650,12305],
+[17046,50054,14536,23040,24612,25436,33908,47826,58961,10128,12784,10877,12566],
+[17401,51097,14839,23520,25125,25966,34614,48823,60190,10339,13051,11103,12828],
+[17756,52140,15142,24000,25638,26496,35321,49819,61418,10550,13317,11330,13090],
+[18111,53183,15445,24480,26150,27026,36027,50815,62646,10761,13583,11557,13352],
+[18466,54226,15748,24960,26663,27556,36733,51812,63875,10972,13850,11783,13614],
+[18821,55268,16051,25440,27176,28086,37440,52808,65103,11183,14116,12010,13875],
+[19176,56311,16353,25920,27689,28616,38146,53805,66331,11394,14382,12236,14137],
+[19532,57354,16656,26400,28201,29146,38853,54801,67560,11605,14649,12463,14399],
+[19887,58397,16959,26880,28714,29676,39559,55797,68788,11816,14915,12690,14661],
+[20242,59440,17262,27360,29227,30205,40265,56794,70017,12027,15181,12916,14923],
+[20597,60241,17565,27840,29740,30735,40344,57790,71245,12238,15448,13090,15124],
+[20952,60241,17868,28320,30252,31265,40344,58388,72473,12449,15714,13090,15124],
+[21307,60241,18170,28800,30765,31795,40344,58388,73702,12567,15980,13090,15124],
+[21662,60241,18453,29280,31278,32325,40344,58388,74930,12567,16247,13090,15124],
+[22017,60241,18453,29760,31791,32855,40344,58388,76158,12567,16513,13090,15124],
+[22373,60241,18453,30240,32303,33385,40344,58388,77387,12567,16779,13090,15124],
+[22601,60241,18453,30720,32816,33915,40344,58388,78615,12567,16951,13090,15124],
+[22601,60241,18453,31200,33329,33999,40344,58388,79843,12567,16951,13090,15124],
+[22601,60241,18453,31680,33842,33999,40344,58388,81072,12567,16951,13090,15124],
+[22601,60241,18453,32160,34354,33999,40344,58388,81159,12567,16951,13090,15124],
+[22601,60241,18453,32640,34790,33999,40344,58388,81159,12567,16951,13090,15124],
+[22601,60241,18453,32717,34790,33999,40344,58388,81159,12567,16951,13090,15124],
+[22601,60241,18453,32717,34790,33999,40344,58388,81159,12567,16951,13090,15124],
+[25057,74983,21556,34148,34790,34245,40058,58388,81159,15709,18916,16013,18555],
+[25410,76039,21859,34629,35280,34728,40622,59210,82302,15930,19182,16239,18816],
+[25763,77095,22163,35110,35770,35210,41187,60032,83445,16151,19449,16464,19078],
+[26116,78151,22466,35591,36260,35692,41751,60855,84588,16373,19715,16690,19339],
+[26469,79208,22770,36072,36750,36175,42315,61677,85731,16594,19982,16916,19601],
+[26822,80264,23074,36553,37240,36657,42879,62499,86874,16815,20248,17141,19862],
+[27175,81320,23377,37034,37730,37139,43443,63322,88017,17036,20514,17367,20123],
+[27528,82376,23681,37515,38220,37622,44008,64144,89160,17258,20781,17592,20385],
+[27881,83432,23984,37996,38710,38104,44572,64966,90303,17479,21047,17818,20646],
+[28234,84488,24288,38477,39200,38586,45136,65789,91446,17700,21314,18043,20907],
+[28587,85544,24592,38958,39690,39069,45700,66611,92589,17921,21580,18269,21169],
+[28939,86600,24895,39439,40180,39551,46264,67434,93733,18143,21846,18494,21430],
+[29292,87656,25199,39920,40670,40033,46829,68256,94876,18364,22113,18720,21691],
+[29645,88712,25502,40401,41160,40516,47393,69078,96019,18585,22379,18945,21953],
+[29998,89769,25806,40882,41650,40998,47957,69901,97162,18806,22646,19171,22214],
+[30351,90825,26110,41363,42140,41480,48521,70723,98305,19028,22912,19396,22475],
+[30704,91881,26413,41844,42630,41963,49085,71545,99448,19249,23179,19622,22737],
+[31057,92937,26717,42324,43120,42445,49650,72368,100591,19470,23445,19848,22998],
+[31410,93993,27020,42805,43610,42927,50214,73190,101734,19691,23711,20073,23259],
+[31763,95049,27324,43286,44100,43410,50778,74012,102877,19913,23978,20299,23521],
+[32116,96105,27628,43767,44590,43892,51342,74835,104020,20134,24244,20524,23782],
+[32469,97161,27931,44248,45080,44374,51906,75657,105163,20355,24511,20750,24043],
+[32822,98217,28235,44729,45570,44857,52471,76479,106306,20576,24777,20975,24305],
+[33174,99273,28538,45210,46060,45339,53035,77154,107450,20750,25043,21201,24566],
+[33527,100330,28644,45691,46550,45821,53599,77154,108593,20750,25310,21426,24827],
+[33880,101386,28644,46172,47040,46304,54163,77154,109736,20750,25576,21652,25089],
+[34233,102442,28644,46653,47530,46786,54727,77154,110879,20750,25843,21877,25350],
+[34272,103498,28644,46760,47600,47268,55292,77154,112022,20750,25872,22103,25611],
+[34272,104554,28644,46760,47600,47751,55856,77154,112832,20750,25872,22328,25873],
+];
+
+// UPS per-kg for 100kg+
+const UPK=[
+[343,1056,286,468,476,482,560,772,1128,208,259,226,261],   // 100-299
+[353,1058,301,482,474,467,521,733,1118,220,266,227,262],   // 300-499
+[353,1058,301,482,474,467,521,733,1118,220,266,227,262],   // 500+
+];
+
+// Region → Country data
+// uc: UPS column index (0-12), null = UPS Expedited not available
+const REGIONS=[
+{name:'東アジア',icon:'🗾',countries:[
+  {g:'🇨🇳',n:'中国（本土 / 南部以外）',fz:'W',uc:2},
+  {g:'🇨🇳',n:'中国（南部: 広東省・福建省）',fz:'K',uc:9},
+  {g:'🇰🇷',n:'韓国',fz:'Z',uc:10},
+  {g:'🇭🇰',n:'香港',fz:'V',uc:11},
+  {g:'🇹🇼',n:'台湾',fz:'X',uc:0},
+]},
+{name:'東南アジア',icon:'🌴',countries:[
+  {g:'🇵🇭',n:'フィリピン',fz:'S',uc:12},
+  {g:'🇹🇭',n:'タイ',fz:'R',uc:3},
+  {g:'🇻🇳',n:'ベトナム',fz:'N',uc:1},
+  {g:'🇮🇩',n:'インドネシア',fz:'T',uc:3},
+  {g:'🇸🇬',n:'シンガポール',fz:'Y',uc:1},
+  {g:'🇲🇾',n:'マレーシア',fz:'Q',uc:1},
+  {g:'🇲🇲',n:'ミャンマー',fz:'D',uc:8},
+  {g:'🇰🇭',n:'カンボジア',fz:'D',uc:null},
+  {g:'🇱🇦',n:'ラオス',fz:'D',uc:null},
+]},
+{name:'南アジア',icon:'🕌',countries:[
+  {g:'🇮🇳',n:'インド',fz:'O',uc:1},
+  {g:'🇧🇩',n:'バングラデシュ',fz:'J',uc:null},
+  {g:'🇵🇰',n:'パキスタン',fz:'J',uc:1},
+  {g:'🇱🇰',n:'スリランカ',fz:'J',uc:null},
+]},
+{name:'オセアニア',icon:'🦘',countries:[
+  {g:'🇦🇺',n:'オーストラリア',fz:'U',uc:3},
+  {g:'🇳🇿',n:'ニュージーランド',fz:'U',uc:3},
+]},
+{name:'北米',icon:'🗽',countries:[
+  {g:'🇺🇸',n:'アメリカ（西海岸: CA / OR / WA 等）',fz:'E',uc:4},
+  {g:'🇺🇸',n:'アメリカ（東部・中部）',fz:'F',uc:4},
+  {g:'🇨🇦',n:'カナダ',fz:'F',uc:4},
+  {g:'🇲🇽',n:'メキシコ',fz:'F',uc:4},
+]},
+{name:'ヨーロッパ',icon:'🏰',countries:[
+  // FedEx Zone M / UPS Z6
+  {g:'🇬🇧',n:'イギリス',fz:'M',uc:5},
+  {g:'🇩🇪',n:'ドイツ',fz:'M',uc:5},
+  {g:'🇫🇷',n:'フランス',fz:'M',uc:5},
+  {g:'🇮🇹',n:'イタリア',fz:'M',uc:5},
+  {g:'🇪🇸',n:'スペイン',fz:'M',uc:5},
+  {g:'🇳🇱',n:'オランダ',fz:'M',uc:5},
+  {g:'🇧🇪',n:'ベルギー',fz:'M',uc:5},
+  // FedEx Zone H / UPS Z7
+  {g:'🇸🇪',n:'スウェーデン',fz:'H',uc:6},
+  {g:'🇵🇱',n:'ポーランド',fz:'H',uc:6},
+  {g:'🇨🇿',n:'チェコ',fz:'H',uc:6},
+  {g:'🇭🇺',n:'ハンガリー',fz:'H',uc:6},
+  {g:'🇮🇪',n:'アイルランド',fz:'H',uc:6},
+  {g:'🇬🇷',n:'ギリシャ',fz:'H',uc:6},
+  {g:'🇸🇰',n:'スロバキア',fz:'H',uc:6},
+  {g:'🇳🇴',n:'ノルウェー',fz:'H',uc:6},
+  // FedEx Zone H / UPS Z8
+  {g:'🇦🇹',n:'オーストリア',fz:'H',uc:7},
+  {g:'🇨🇭',n:'スイス',fz:'H',uc:7},
+  {g:'🇩🇰',n:'デンマーク',fz:'H',uc:7},
+  {g:'🇫🇮',n:'フィンランド',fz:'H',uc:7},
+  {g:'🇵🇹',n:'ポルトガル',fz:'H',uc:7},
+  // FedEx Zone I / UPS Z8
+  {g:'🇹🇷',n:'トルコ',fz:'I',uc:7},
+]},
+{name:'中東・その他',icon:'🌙',countries:[
+  {g:'🇦🇪',n:'UAE（アラブ首長国連邦）',fz:'I',uc:7},
+  {g:'🇸🇦',n:'サウジアラビア',fz:'I',uc:8},
+  {g:'🇮🇱',n:'イスラエル',fz:'H',uc:7},
+  {g:'🇿🇦',n:'南アフリカ',fz:'I',uc:7},
+]},
+];
+
+const UZ_NAMES=['Z1','Z2','Z3','Z4','Z5','Z6','Z7','Z8','Z9','Z10','Z1★韓国','Z2★香港','Z2★フィリピン'];
+
+// ============================================================
+// Rate lookup
+// ============================================================
+function fxRate(zone,kg){
+  const bill=Math.ceil(kg*2)/2;
+  const tbl=FX[zone];
+  if(!tbl)return null;
+  if(bill<=20.5){
+    const idx=Math.round(bill*2)-1;
+    const r=tbl[idx];
+    return(r===null||r===undefined)?null:r;
+  }
+  const pk=FXK[zone];
+  if(!pk)return null;
+  const w=Math.ceil(bill);
+  for(const[mx,rt]of pk){if(w<=mx)return w*rt;}
+  return null;
+}
+
+function upRate(col,kg){
+  if(col===null||col===undefined)return null;
+  const bill=Math.ceil(kg);
+  if(bill<=0)return UP[0][col];
+  if(bill<=99)return UP[bill-1][col];
+  let r;
+  if(bill<=299)r=UPK[0][col];
+  else if(bill<=499)r=UPK[1][col];
+  else r=UPK[2][col];
+  return bill*r;
+}
+
+// ============================================================
+// UI
+// ============================================================
+let bc=0;
+const jpy=n=>'¥'+Math.round(n).toLocaleString();
+const r2=n=>Math.round(n*100)/100;
+
+// Init region buttons
+REGIONS.forEach((r,i)=>{
+  const b=document.createElement('button');
+  b.className='rbtn';b.id='r'+i;
+  b.textContent=r.icon+' '+r.name;
+  b.onclick=()=>selRegion(i);
+  document.getElementById('region-row').appendChild(b);
+});
+
+function selRegion(idx){
+  document.querySelectorAll('.rbtn').forEach((b,i)=>b.classList.toggle('active',i===idx));
+  const sel=document.getElementById('country');
+  sel.innerHTML='<option value="">— 国を選択してください —</option>';
+  REGIONS[idx].countries.forEach((c,i)=>{
+    const o=document.createElement('option');
+    o.value=idx+'_'+i;
+    o.textContent=c.g+' '+c.n;
+    sel.appendChild(o);
+  });
+  document.getElementById('ctry-wrap').style.display='';
+  document.getElementById('zone-info').innerHTML='';
+  recalc();
+}
+
+function getCountry(){
+  const v=document.getElementById('country').value;
+  if(!v)return null;
+  const [ri,ci]=v.split('_').map(Number);
+  return REGIONS[ri]?.countries[ci]||null;
+}
+
+// ── テキスト解析機能 ──
+function togglePaste(){
+  const a=document.getElementById('paste-area');
+  const b=document.getElementById('paste-btn');
+  const open=a.style.display==='none';
+  a.style.display=open?'':'none';
+  b.classList.toggle('open',open);
+  if(open)document.getElementById('paste-input').focus();
+}
+
+// 英語数字表記 → 数値変換
+function wordToNum(s){
+  const MAP={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,
+    eighteen:18,nineteen:19,twenty:20,thirty:30,forty:40,fifty:50};
+  const n=parseInt(s);if(!isNaN(n))return n;
+  return MAP[s.toLowerCase()]||null;
+}
+
+function parseBoxText(text){
+  const lines=text.split(/\n/).map(l=>l.replace(/^[\s•\-\*·\u2022\u00b7]+/,'').trim()).filter(l=>l.length>0);
+  const out=[];
+
+  // ─── 形式判定ヘルパー ───
+  function parseDims(str){
+    // "60x52x43" or "60×52×43" or "60*52*43"
+    const dm=str.match(/(\d+\.?\d*)\s*[×xX\*]\s*(\d+\.?\d*)\s*[×xX\*]\s*(\d+\.?\d*)/);
+    if(!dm)return null;
+    return{l:Math.round(parseFloat(dm[1])),w:Math.round(parseFloat(dm[2])),h:Math.round(parseFloat(dm[3]))};
+  }
+
+  // ─── タブ区切り形式 ───
+  // 例: "Box 1\t17.50\t60x52x43"  or  "Box 1\t17.50 kg\t60x52x43"
+  // フィールドがタブで区切られ、重量に小数点付き数字が含まれるパターン
+  const isTabFormat = lines.some(l=>l.includes('\t'));
+  if(isTabFormat){
+    for(const line of lines){
+      const fields=line.split('\t').map(f=>f.trim()).filter(f=>f!='');
+      if(fields.length<2)continue;
+      // 重量フィールド: kgなしの数字 or "17.50 kg"
+      // 寸法フィールド: "60x52x43"
+      let weight=null, dims=null, qty=1;
+      for(const f of fields){
+        // 重量候補: 小数点ありの数字（kgあり/なし）
+        const wm=f.match(/^(\d+\.?\d*)\s*(?:kg)?$/i);
+        if(wm&&weight===null&&parseFloat(wm[1])>0){weight=parseFloat(wm[1]);continue;}
+        // 寸法候補
+        const d=parseDims(f);
+        if(d&&dims===null){dims=d;continue;}
+        // 数量: "Box N" → qty=1（各行が1箱）
+      }
+      if(weight!==null&&weight>0){
+        if(dims)out.push({qty:1,weight,l:dims.l,w:dims.w,h:dims.h});
+        else out.push({qty:1,weight,l:0,w:0,h:0});
+      }
+    }
+    if(out.length>0)return out;
+  }
+
+  // ─── 通常形式（kg付き + 寸法 or 重量のみ）───
+  for(const line of lines){
+    // kgを含む行のみ処理
+    const wm=line.match(/(\d+\.?\d*)\s*kg/i);
+    if(!wm)continue;
+    const weight=parseFloat(wm[1]);
+    if(weight<=0)continue;
+
+    // 寸法取得（任意）
+    const dims=parseDims(line);
+
+    // 数量を取得（先頭 "N Box(es):" or 英語表現 "two boxes"）
+    let qty=1;
+    const qmNum=line.match(/^(\d+)\s*[Bb]ox/);
+    if(qmNum){const n=parseInt(qmNum[1]);if(n>0)qty=n;}
+    // 英語表現: "two boxes each" / "two boxes with each box"
+    const qmWord=line.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|[0-9]+)\s+box(?:es)?\b/i);
+    if(qmWord){const n=wordToNum(qmWord[1]);if(n&&n>0)qty=n;}
+
+    if(dims){
+      out.push({qty,weight,l:dims.l,w:dims.w,h:dims.h});
+    } else {
+      // 寸法なし → 実重量のみで登録
+      out.push({qty,weight,l:0,w:0,h:0});
+    }
+  }
+  return out;
+}
+
+function doParse(){
+  const text=document.getElementById('paste-input').value.trim();
+  const res=document.getElementById('parse-result');
+  if(!text){res.style.display='';res.className='parse-result parse-err';res.textContent='テキストを入力してください';return;}
+  const parsed=parseBoxText(text);
+  if(parsed.length===0){
+    res.style.display='';res.className='parse-result parse-err';
+    res.textContent='解析できませんでした。下記形式に対応しています：①「Box 1 17.50 60x52x43」(タブ区切り) ②「7.0kg (43×41×31)」③「two boxes weighing 24kg」(重量のみ)';
+    return;
+  }
+  // 既存の箱をクリア
+  document.getElementById('boxes').innerHTML='';
+  bc=0;
+  // 解析結果を入力
+  parsed.forEach(p=>{
+    addBox();
+    const id=bc;
+    document.getElementById('qty'+id).value=p.qty;
+    document.getElementById('wt'+id).value=p.weight;
+    // 寸法なしの場合は空欄（実重量で計算）
+    document.getElementById('l'+id).value=p.l||'';
+    document.getElementById('w'+id).value=p.w||'';
+    document.getElementById('h'+id).value=p.h||'';
+  });
+  recalc();
+  // 結果表示
+  res.style.display='';res.className='parse-result parse-ok';
+  const totalQty=parsed.reduce((s,p)=>s+p.qty,0);
+  const noDims=parsed.filter(p=>!p.l||!p.w||!p.h).length;
+  const dimNote=noDims>0?`　(うち${noDims}種はサイズ未入力 → 実重量で計算)`:'';
+  res.textContent=`✓ ${parsed.length}種類・合計${totalQty}個を入力しました${dimNote}`;
+  // パネルを閉じる（少し待つ）
+  setTimeout(()=>{
+    document.getElementById('paste-area').style.display='none';
+    document.getElementById('paste-btn').classList.remove('open');
+  },1500);
+}
+
+function addBox(){
+  const id=++bc;
+  const d=document.createElement('div');
+  d.className='box';d.id='box-'+id;
+  d.innerHTML=`
+    <div class="box-hd">
+      <span class="box-num">BOX #${id}</span>
+      <button class="btn-rm" onclick="rmBox(${id})">×</button>
+    </div>
+    <div class="grid5">
+      <div class="field"><label>数量（個）</label><input type="number" min="1" value="1" id="qty${id}" oninput="recalc()"></div>
+      <div class="field"><label>重量 kg/個</label><input type="number" min="0.1" step="0.1" placeholder="例: 5.5" id="wt${id}" oninput="recalc()"></div>
+      <div class="field"><label>縦 cm</label><input type="number" min="1" step="1" placeholder="L" id="l${id}" oninput="recalc()"></div>
+      <div class="field"><label>横 cm</label><input type="number" min="1" step="1" placeholder="W" id="w${id}" oninput="recalc()"></div>
+      <div class="field"><label>高さ cm</label><input type="number" min="1" step="1" placeholder="H" id="h${id}" oninput="recalc()"></div>
+    </div>
+    <div class="vol-bar" id="vol${id}">サイズを入力すると容積重量を自動計算します</div>
+  `;
+  document.getElementById('boxes').appendChild(d);
+  recalc();
+}
+
+function rmBox(id){
+  const el=document.getElementById('box-'+id);
+  if(el)el.remove();
+  recalc();
+}
+
+function getBoxes(){
+  const bs=[];
+  document.querySelectorAll('.box').forEach(wrap=>{
+    const id=wrap.id.replace('box-','');
+    const qty=parseInt(document.getElementById('qty'+id)?.value)||0;
+    const wt=parseFloat(document.getElementById('wt'+id)?.value)||0;
+    const l=parseFloat(document.getElementById('l'+id)?.value)||0;
+    const w=parseFloat(document.getElementById('w'+id)?.value)||0;
+    const h=parseFloat(document.getElementById('h'+id)?.value)||0;
+    if(qty>0&&wt>0)bs.push({id,qty,wt,l,w,h});
+  });
+  return bs;
+}
+
+function recalc(){
+  // Update vol displays
+  document.querySelectorAll('.box').forEach(wrap=>{
+    const id=wrap.id.replace('box-','');
+    const wt=parseFloat(document.getElementById('wt'+id)?.value)||0;
+    const l=parseFloat(document.getElementById('l'+id)?.value)||0;
+    const w=parseFloat(document.getElementById('w'+id)?.value)||0;
+    const h=parseFloat(document.getElementById('h'+id)?.value)||0;
+    const el=document.getElementById('vol'+id);
+    if(!el)return;
+    if(wt>0&&l>0&&w>0&&h>0){
+      const vol=r2((l*w*h)/5000);
+      const bill=r2(Math.max(wt,vol));
+      const isV=vol>wt;
+      el.innerHTML=`容積重量: <span class="vb">${vol} kg</span>　実重量: <span class="vb">${wt} kg</span>　→ 課税重量: <span class="${isV?'vr':'vw'}">${bill} kg <span style="opacity:.7;font-size:10px;">${isV?'容積基準':'実重量基準'}</span></span>`;
+    } else if(wt>0){
+      el.innerHTML=`実重量: <span class="vb">${wt} kg</span>　<span style="opacity:.5;">（サイズ未入力 → 実重量で計算）</span>`;
+    } else {
+      el.innerHTML='サイズを入力すると容積重量を自動計算します';
+    }
+  });
+
+  // Summary
+  const boxes=getBoxes();
+  const sumEl=document.getElementById('summary');
+  if(boxes.length>0){
+    const pkgs=boxes.reduce((s,b)=>s+b.qty,0);
+    const actW=r2(boxes.reduce((s,b)=>s+(b.wt*b.qty),0));
+    const volW=r2(boxes.reduce((s,b)=>s+(((b.l*b.w*b.h)/5000)*b.qty),0));
+    sumEl.style.display='flex';
+    sumEl.innerHTML=`<div class="sum-chip">総梱包数 <b>${pkgs}個</b></div><div class="sum-chip">実重量合計 <b>${actW} kg</b></div>`+(volW>0?`<div class="sum-chip">容積重量合計 <b>${volW} kg</b></div>`:'');
+  } else { sumEl.style.display='none'; }
+
+  // Zone info
+  const country=getCountry();
+  const zEl=document.getElementById('zone-info');
+  if(country){
+    const upLabel=country.uc!==null?UZ_NAMES[country.uc]:'対象外';
+    const upCls=country.uc!==null?'zbadge zbu':'zbadge zbu-na';
+    zEl.innerHTML=`<span class="zbadge zbf">FedEx Zone ${country.fz}</span><span class="${upCls}">UPS ${upLabel}</span>`;
+  } else { zEl.innerHTML=''; }
+
+  const empty=document.getElementById('empty-msg');
+  const resultContent=document.getElementById('result-content');
+  if(!country||boxes.length===0){
+    empty.style.display='';resultContent.style.display='none';return;
+  }
+
+  const c=country;
+  const upsNA=c.uc===null;
+
+  // ── 一括発送: 全箱の課税重量を合算して1回のレート検索 ──
+  let rawTotal=0;
+  const bd=[];
+  const totalPkgs=boxes.reduce((s,b)=>s+b.qty,0);
+
+  boxes.forEach(box=>{
+    const vol=(box.l*box.w*box.h)/5000;
+    const bkg=Math.max(box.wt,vol);
+    rawTotal+=bkg*box.qty;
+    bd.push({box,bkg:r2(bkg),contrib:r2(bkg*box.qty),isVol:vol>box.wt});
+  });
+
+  const fxBill=Math.ceil(rawTotal*2)/2;  // FedEx: 0.5kg切上
+  const upBill=Math.ceil(rawTotal);       // UPS: 1kg切上
+
+  const fxEff=fxRate(c.fz,fxBill);
+  const upEff=upsNA?null:upRate(c.uc,upBill);
+
+  // FSC rates — 未入力なら結果をブロック
+  const fxRawVal = document.getElementById('fsc-fx')?.value;
+  const upRawVal = document.getElementById('fsc-up')?.value;
+  const fscFxEntered = fxRawVal !== '' && fxRawVal !== null && fxRawVal !== undefined;
+  const fscUpEntered = upRawVal !== '' && upRawVal !== null && upRawVal !== undefined;
+
+  if(!fscFxEntered || !fscUpEntered){
+    empty.style.display='none'; resultContent.style.display='';
+    resultContent.innerHTML=`<div style="text-align:center;padding:28px 16px;">
+      <div style="font-size:28px;margin-bottom:12px;">⛽</div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:8px;">燃油サーチャージを入力してください</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.8;">
+        ${!fscFxEntered?'<span style="color:var(--fedex);">● FedEx FSC</span> が未入力<br>':''}
+        ${!fscUpEntered?'<span style="color:var(--ups);">● UPS FSC</span> が未入力<br>':''}
+        各社サイトで最新レートを確認してから入力してください。
+      </div>
+    </div>`;
+    return;
+  }
+
+  const fscFx = parseFloat(fxRawVal) / 100;
+  const fscUp = parseFloat(upRawVal) / 100;
+  const fxFsc=fxEff!==null?Math.round(fxEff*fscFx):null;
+  const upFsc=upEff!==null?Math.round(upEff*fscUp):null;
+  const fxTotal=fxEff!==null?fxEff+fxFsc:null;
+  const upTotal=upEff!==null?upEff+upFsc:null;
+
+  const winner=fxTotal===null&&upTotal===null?'tie':fxTotal===null?'ups':upTotal===null?'fedex':(fxTotal<upTotal?'fedex':'ups');
+  const savings=(fxTotal!==null&&upTotal!==null)?Math.abs(upTotal-fxTotal):null;
+
+  // 単価テキスト取得
+  function rateLabel(zone,bill,isFx){
+    const b=Math.ceil(bill);
+    if(isFx){
+      if(bill<=20.5){return '固定料金';}
+      const pk=FXK[zone];if(!pk)return '';
+      for(const[mx,rt]of pk){if(b<=mx)return b+'kg × ¥'+rt.toLocaleString()+'/kg';}
+    } else {
+      if(bill<=99)return bill+'kg 定額';
+      const row=bill<=299?UPK[0]:bill<=499?UPK[1]:UPK[2];
+      return b+'kg × ¥'+row[c.uc].toLocaleString()+'/kg';
+    }
+    return '';
+  }
+
+  let html='';
+
+  // 合計課税重量バー
+  const actTotal=r2(boxes.reduce((s,b)=>s+b.wt*b.qty,0));
+  html+=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:12px;">
+    <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:700;">一括発送 課税重量（全箱合算）</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+      <div>実重量合計 <span style="font-family:var(--mono);color:var(--text);">${actTotal} kg</span></div>
+      <div style="color:var(--muted);">→</div>
+      <div>課税重量合計 <span style="font-family:var(--mono);font-weight:700;color:var(--green);">${r2(rawTotal)} kg</span> <span style="color:var(--muted);font-size:10px;">(FedEx ${fxBill}kg / UPS ${upBill}kg)</span></div>
+    </div>
+  </div>`;
+
+  // 比較カード
+  const fWin=winner==='fedex',uWin=winner==='ups';
+  function cardBreakdown(base,fsc,total,isFx){
+    if(base===null)return '';
+    const pctStr=isFx?(fscFx*100).toFixed(2)+'%':(fscUp*100).toFixed(2)+'%';
+    return `<div class="rcard-breakdown">
+      <div class="rbd-row"><span>正味運賃</span><span>${jpy(base)}</span></div>
+      <div class="rbd-row"><span>燃油 (${pctStr})</span><span>+ ${jpy(fsc)}</span></div>
+      <div class="rbd-row total"><span>合計</span><span>${jpy(total)}</span></div>
+    </div>`;
+  }
+  html+=`<div class="rcards">
+  <div class="rcard rf${fWin?' win':''}">
+    ${fWin?'<div class="win-tag">✓ こちらがお得</div>':''}<div class="rcard-name rn-f">FedEx IE</div>
+    <div class="rcard-svc">インターナショナル・エコノミー</div>
+    ${fxTotal!==null
+      ?`<div class="rcard-price">${jpy(fxTotal)}</div>
+        ${cardBreakdown(fxEff,fxFsc,fxTotal,true)}
+        <div class="rcard-meta" style="margin-top:6px;font-family:var(--mono);font-size:10px;">${rateLabel(c.fz,fxBill,true)}</div>
+        <div class="rcard-meta">${totalPkgs}個 一括</div>`
+      :`<div class="rcard-price" style="font-size:17px;color:var(--muted);">要 確 認</div><div class="rcard-meta">FedExへ直接お問い合わせを</div>`}
+  </div>
+  <div class="rcard ru${uWin?' win':''}">
+    ${uWin?'<div class="win-tag">✓ こちらがお得</div>':''}<div class="rcard-name rn-u">UPS Expedited</div>
+    <div class="rcard-svc">ワールドワイド・エクスペダイテッド</div>
+    ${upTotal!==null
+      ?`<div class="rcard-price">${jpy(upTotal)}</div>
+        ${cardBreakdown(upEff,upFsc,upTotal,false)}
+        <div class="rcard-meta" style="margin-top:6px;font-family:var(--mono);font-size:10px;">${rateLabel(c.fz,upBill,false)}</div>
+        <div class="rcard-meta">${totalPkgs}個 一括</div>`
+      :`<div class="rcard-price" style="font-size:17px;color:var(--muted);">サービス対象外</div><div class="rcard-meta">この国ではUPS Expedited未提供</div>`}
+  </div>
+  </div>`;
+
+  // 節約バー
+  if(savings!==null&&savings>0){
+    const base=Math.max(fxTotal||1,upTotal||1);
+    const pct=Math.round(savings/base*100);
+    html+=`<div class="save-bar">
+      <div class="save-main">💰 ${winner==='fedex'?'FedEx IE':'UPS Expedited'} の方が ${jpy(savings)} お得</div>
+      <div class="save-sub">高い方と比べて ${pct}% 節約（燃油込み）</div>
+    </div>`;
+  } else if(savings===0){
+    html+=`<div class="save-bar" style="background:rgba(255,255,255,.03);"><div class="save-main" style="color:var(--muted);">両社ほぼ同額</div></div>`;
+  }
+
+  // 重量内訳
+  if(bd.length>0){
+    html+=`<div class="breakdown"><div class="breakdown-title">重量内訳</div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left">梱包</th>
+        <th>数量</th>
+        <th>課税重量/個</th>
+        <th>小計</th>
+        <th>基準</th>
+      </tr></thead><tbody>`;
+    bd.forEach(b=>{
+      html+=`<tr>
+        <td style="font-family:var(--mono);font-size:11px;">BOX #${b.box.id}</td>
+        <td style="font-family:var(--mono);">${b.box.qty}個</td>
+        <td style="font-family:var(--mono);">${b.bkg} kg</td>
+        <td style="font-family:var(--mono);font-weight:600;">${b.contrib} kg</td>
+        <td><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;${b.isVol?'background:rgba(245,166,35,.15);color:var(--ups);':'background:rgba(52,211,153,.12);color:var(--green);'}">${b.isVol?'容積':'実重量'}</span></td>
+      </tr>`;
+    });
+    html+=`<tr style="border-top:1px solid var(--border);">
+      <td colspan="3" style="color:var(--muted);font-size:11px;padding-top:10px;">合計課税重量</td>
+      <td style="font-family:var(--mono);font-weight:700;color:var(--green);font-size:14px;padding-top:10px;">${r2(rawTotal)} kg</td>
+      <td></td>
+    </tr></tbody></table></div>`;
+  }
+
+  // 注意書き
+  let warnExtra='';
+  if(fxEff===null)warnExtra+=' FedEx「要確認」は本契約の対象外重量帯です。FedExへ直接ご確認ください。';
+  if(upsNA)warnExtra+=' UPS「サービス対象外」はこの国でUPS Expeditedが未提供です。';
+  html+=`<div class="warn">⚠ 上記は正味運賃＋燃油サーチャージの合計です。計算は一括発送（合算重量）方式。実際の請求には<strong>遠隔地手数料・その他附帯料金</strong>等が別途加算されます。FSCは出荷前に各社サイトでご確認ください。${warnExtra}</div>`;
+
+  empty.style.display='none';
+  resultContent.style.display='';
+  resultContent.innerHTML=html;
+}
+
+addBox();
+</script>
+</body>
+</html>
